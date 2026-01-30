@@ -1,28 +1,57 @@
-/* fn main() {
-    println!("Hello, world!");
-} */
+use rusqlite::{Connection};
+use std::io;
 
-use rusqlite::{Connection, Result};
+fn main() {
 
-fn main() -> Result<()> {
-    // Creates ./data/app.db (and folders if you already created them)
-    std::fs::create_dir_all("data").expect("failed to create data directory");
+    println!("What's your name?");
 
-    let conn = Connection::open("data/app.db")?;
+    let mut name: String = String::new();
+
+    io::stdin()
+        .read_line(&mut name)
+        .expect("Failed to read input");
+
+    let name = name.trim();
+
+    println!("What's your email?");
+
+    let mut email: String = String::new();
+
+    io::stdin()
+        .read_line(&mut email)
+        .expect("Failed to read input");
+
+    let email: &str = email.trim();
+    
+    println!("Data received:");
+    println!("Name: {}", name);
+    println!("Email: {}", email);
+
+    println!("Is this correct? [n]");
+    let mut confirmation = String::new();
+
+    io::stdin()
+        .read_line(&mut confirmation)
+        .expect("Failed to read input");
+
+    let confirmation: String = confirmation.trim().to_lowercase();
+    if confirmation == "y" || confirmation == "yes" {
+        println!("Thank you, data confirmed!");
+    } else {
+        println!("Data not confirmed, exiting.");
+    }
+
+    let conn: Connection = Connection::open("data/app.db").expect("Failed to open database");
 
     // Create a tiny table to verify everything works
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS _healthcheck (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL)",
         [],
-    )?;
+    ).expect("Failed to create people table");
 
     conn.execute(
-        "INSERT INTO _healthcheck (created_at) VALUES (datetime('now'))",
-        [],
-    )?;
+        "INSERT INTO people (name, email) VALUES (?, ?)",
+        [name, email],
+    ).expect("Failed to insert data into people table");
 
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM _healthcheck", [], |row| row.get(0))?;
-    println!("SQLite OK ✅ rows in _healthcheck = {}", count);
-
-    Ok(())
 }
