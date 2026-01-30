@@ -35,11 +35,13 @@ fn main() {
         .expect("Failed to read input");
 
     let confirmation: String = confirmation.trim().to_lowercase();
-    if confirmation == "y" || confirmation == "yes" {
-        println!("Thank you, data confirmed!");
-    } else {
+    
+    if confirmation != "y" && confirmation != "yes" {
         println!("Data not confirmed, exiting.");
+        return;
     }
+
+    println!("Thank you, data confirmed!");
 
     let conn: Connection = Connection::open("data/app.db").expect("Failed to open database");
 
