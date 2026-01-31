@@ -1,5 +1,8 @@
+use chrono::{DateTime, Local, Utc};
+use inquire::{Confirm, Text, Select, InquireError};
 use rusqlite::{Connection, OptionalExtension, Result};
 use std::io;
+use std::time::SystemTime;
 use tsadaash::domain::{Continents, User};
 
 fn connect() -> Result<Connection> {
@@ -17,28 +20,34 @@ fn connect() -> Result<Connection> {
 fn signup(conn: &Connection) -> Result<User> {
     // --- tiny helpers (MVP style: keep inside signup) ---
 
-    fn read_line_trimmed(prompt: &str) -> String {
-        println!("{}", prompt);
-
-        let mut s = String::new();
-        io::stdin().read_line(&mut s).expect("Failed to read input");
-
-        s.trim().to_string()
-    }
-
     fn yes(prompt: &str) -> bool {
-        let answer = read_line_trimmed(prompt).to_lowercase();
-        matches!(answer.as_str(), "y" | "yes")
+        //let answer = read_line_trimmed(prompt).to_lowercase();
+        // matches!(answer.as_str(), "y" | "yes")
+        let ans = Confirm::new(prompt)
+            .with_default(true)
+            .prompt();
+
+        match ans {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(_) => {
+                println!("Error reading input, assuming 'No'");
+                false
+            }
+        }
     }
 
     fn ask_confirmed_text(field_pretty: &str, question: &str) -> String {
         loop {
-            let input = read_line_trimmed(question);
+            //let input = read_line_trimmed(question);
+            let input = Text::new(question)
+                .with_placeholder("Type your answer here")
+                .prompt()
+                .unwrap_or_default();
 
-            println!("You entered:");
-            println!("{}: {}", field_pretty, input);
+            println!("You entered: {} ➡️  {}", field_pretty, input);
 
-            if yes("Is this correct? [y/N]") {
+            if yes("Is this correct?") {
                 return input;
             }
 
@@ -47,34 +56,26 @@ fn signup(conn: &Connection) -> Result<User> {
     }
 
     fn ask_continent_confirmed() -> String {
+
+    let options: Vec<String> = Continents::vec().iter().map(|s| s.to_string()).collect();
+        
         loop {
-            println!("Choose your continent:");
-            for (i, c) in Continents::iter().enumerate() {
-                println!("{}: {}", i + 1, c);
-            }
 
-            let raw = read_line_trimmed("Enter the number of your choice:");
-            let choice: usize = match raw.parse() {
-                Ok(n) => n,
+            let ans: Result<String, InquireError> = Select::new("Choose your continent:", options.clone())
+                .prompt();
+
+            let continent: String = match ans {
+                Ok(choice) => choice,
                 Err(_) => {
-                    println!("Please enter a number.\n");
+                    println!("Error reading input, try again.\n");
                     continue;
                 }
             };
 
-            let continent = match Continents::from_choice(choice) {
-                Some(c) => c,
-                None => {
-                    println!("Invalid choice, try again.\n");
-                    continue;
-                }
-            };
+            println!("You entered: Continent ➡️  {}", continent);
 
-            println!("You entered:");
-            println!("Continent: {}", continent);
-
-            if yes("Is this correct? [y/N]") {
-                return continent.to_string();
+            if yes("Is this correct?") {
+                return continent;
             }
 
             println!("Ok, let's try again.\n");
@@ -89,7 +90,7 @@ fn signup(conn: &Connection) -> Result<User> {
         let tz_continent = ask_continent_confirmed();
         let tz_city = ask_confirmed_text(
             "Time zone city",
-            "What's your time zone city (e.g., Paris, New_York, Tokyo)?",
+            "What's your time zone city?",
         );
 
         println!("\nSummary:");
@@ -97,7 +98,7 @@ fn signup(conn: &Connection) -> Result<User> {
         println!("Email: {}", email);
         println!("Time zone: {}/{}", tz_continent, tz_city);
 
-        if yes("Confirm signup? [y/N]") {
+        if yes("Confirm signup?") {
             // Insert
             conn.execute(
                 "INSERT INTO people (name, email, tz_continent, tz_city) VALUES (?1, ?2, ?3, ?4)",
@@ -107,13 +108,7 @@ fn signup(conn: &Connection) -> Result<User> {
             // Build User (works if your User has pub fields; otherwise use User::new(...))
             let id = conn.last_insert_rowid() as i32;
 
-            let user = User::new(
-                id,
-                name,
-                email,
-                tz_continent,
-                tz_city,
-            );
+            let user = User::new(id, name, email, tz_continent, tz_city);
 
             println!("\nSignup complete! Welcome, {}!", user.name());
             return Ok(user);
@@ -123,7 +118,7 @@ fn signup(conn: &Connection) -> Result<User> {
     }
 }
 
-fn signin(conn: &Connection) -> rusqlite::Result<Option<User>> {
+fn signin(conn: &Connection) -> Result<Option<User>> {
     println!("What's your name?");
     let mut name = String::new();
     io::stdin()
@@ -152,20 +147,33 @@ fn signin(conn: &Connection) -> rusqlite::Result<Option<User>> {
 }
 
 fn ask_yes_no(prompt: &str) -> bool {
-    println!("{}", prompt);
+    let ans = Confirm::new(prompt)
+        .with_default(false)
+        .with_help_message("This is a help message")
+        .prompt();
 
-    let mut response = String::new();
-    io::stdin()
-        .read_line(&mut response)
-        .expect("Failed to read input");
+    match ans {
+        Ok(true) => true,
+        Ok(false) => false,
+        Err(_) => {
+            println!("Error reading input, assuming 'No'");
+            false
+        }
+    }
+}
 
-    matches!(response.trim().to_lowercase().as_str(), "y" | "yes")
+fn clear_screen() {
+    print!("\x1B[2J\x1B[1;1H");
 }
 
 fn main() -> rusqlite::Result<()> {
     let conn: Connection = connect()?;
 
-    let current_user: User = if ask_yes_no("Are you a registered user? [y/N]") {
+    clear_screen();
+    println!("");
+    println!("=== Tsadaash ===\n");
+
+    let current_user: User = if ask_yes_no("Are you a registered user?") {
         match signin(&conn)? {
             Some(user) => user,
             None => {
@@ -179,7 +187,34 @@ fn main() -> rusqlite::Result<()> {
 
     println!("Welcome, {}!", current_user.name());
     println!("Email: {}", current_user.email());
-    println!("TZ: {}/{}", current_user.tz_continent(), current_user.tz_city());
+    println!(
+        "TZ: {}/{}",
+        current_user.tz_continent(),
+        current_user.tz_city()
+    );
 
+    let now_dt_local: DateTime<Local> = SystemTime::now().into();
+    println!("Local: {}", now_dt_local.format("%Y-%m-%d %H:%M:%S"));
+
+    let tz_continent = current_user.tz_continent();
+    let tz_city = current_user.tz_city();
+    let tz_name = format!("{}/{}", tz_continent, tz_city); // IMPORTANT: slash
+
+    let now_dt_tz: DateTime<chrono_tz::Tz> = match tz_name.parse::<chrono_tz::Tz>() {
+        Ok(tz) => {
+            let now_utc: DateTime<Utc> = SystemTime::now().into();
+            now_utc.with_timezone(&tz)
+        }
+        Err(_) => {
+            println!(
+                "Warning: could not parse time zone {}. Using UTC time instead.",
+                tz_name
+            );
+            let now_utc: DateTime<Utc> = SystemTime::now().into();
+            now_utc.with_timezone(&chrono_tz::UTC)
+        }
+    };
+
+    println!("In {}: {}", tz_name, now_dt_tz.format("%Y-%m-%d %H:%M:%S"));
     Ok(())
 }
