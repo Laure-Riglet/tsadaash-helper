@@ -1,7 +1,14 @@
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2, Params,
+};
 use chrono::{DateTime, Local, Utc};
-use inquire::{Confirm, Text, Select, InquireError};
+use inquire::{
+    autocompletion::Replacement, validator::Validation, Autocomplete, Confirm, CustomUserError,
+    InquireError, Password, PasswordDisplayMode, Select, Text,
+};
 use rusqlite::{Connection, OptionalExtension, Result};
-use std::io;
+use serde_json::{from_str, Value};
 use std::time::SystemTime;
 use tsadaash::domain::{Continents, User};
 
@@ -10,11 +17,34 @@ fn connect() -> Result<Connection> {
 
     // Create a tiny table to verify everything works
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, tz_continent TEXT NOT NULL, tz_city TEXT NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, username TEXT NOT NULL, email TEXT NOT NULL, password TEXT NOT NULL, tz_continent TEXT NOT NULL, tz_city TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
         [],
     )?;
 
     return Ok(conn);
+}
+
+fn get_argon2_instance() -> Argon2<'static> {
+    //            Regarding Argon2 parameters:
+    //            ----------------------------
+    //            For API keys / tokens:
+    //            - higher m is OK (e.g., 96 MB --> 98304 KiB, 128 MB --> 131072 KiB)
+    //            - t can be lower
+    //            - UX doesn’t matter as much
+    //
+    //            For low-RAM environments:
+    //            - don’t go above ~32 MB (32768 KiB)
+    //            - keep t ≥ 2
+
+    let params = Params::new(
+        65536, // m: memory in KiB (64 MB)
+        3,     // t: iterations
+        1,     // p: parallelism
+        None,  // output length (None = default)
+    )
+    .expect("invalid Argon2 params");
+
+    return Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
 }
 
 fn signup(conn: &Connection) -> Result<User> {
@@ -23,9 +53,7 @@ fn signup(conn: &Connection) -> Result<User> {
     fn yes(prompt: &str) -> bool {
         //let answer = read_line_trimmed(prompt).to_lowercase();
         // matches!(answer.as_str(), "y" | "yes")
-        let ans = Confirm::new(prompt)
-            .with_default(true)
-            .prompt();
+        let ans = Confirm::new(prompt).with_default(true).prompt();
 
         match ans {
             Ok(true) => true,
@@ -55,14 +83,76 @@ fn signup(conn: &Connection) -> Result<User> {
         }
     }
 
-    fn ask_continent_confirmed() -> String {
+    fn get_cities_for_continent(continent: &str) -> Vec<String> {
+        let cities: Value =
+            from_str(include_str!("../data/tz_cities.json")).expect("Failed to parse tz.json");
+        let mut city_list: Vec<String> = Vec::new();
+        if let Value::Object(map) = cities {
+            if let Some(Value::Array(city_array)) = map.get(continent) {
+                for city in city_array {
+                    if let Value::String(city_name) = city {
+                        city_list.push(city_name.clone());
+                    }
+                }
+            }
+        }
+        city_list
+    }
 
-    let options: Vec<String> = Continents::vec().iter().map(|s| s.to_string()).collect();
-        
+    fn ask_confirmed_city(continent: &str) -> String {
+        #[derive(Clone)]
+        struct CityAutocomplete {
+            cities: Vec<String>,
+        }
+
+        impl Autocomplete for CityAutocomplete {
+            fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
+                let input_lc = input.to_lowercase();
+
+                Ok(self
+                    .cities
+                    .iter()
+                    .filter(|city| city.to_lowercase().starts_with(&input_lc))
+                    .cloned()
+                    .collect())
+            }
+
+            fn get_completion(
+                &mut self,
+                input: &str,
+                highlighted_suggestion: Option<String>,
+            ) -> Result<Replacement, CustomUserError> {
+                // Replacement is likely Option<String> in your inquire version
+                Ok(highlighted_suggestion.or_else(|| Some(input.to_string())))
+            }
+        }
+
         loop {
+            let cities: Vec<String> = get_cities_for_continent(continent);
+            let ac = CityAutocomplete { cities };
 
-            let ans: Result<String, InquireError> = Select::new("Choose your continent:", options.clone())
-                .prompt();
+            let input = Text::new("What's your time zone city?")
+                .with_placeholder("Type your answer here")
+                .with_autocomplete(ac)
+                .prompt()
+                .unwrap_or_default();
+
+            println!("You entered: Time zone city ➡️ {}", input);
+
+            if yes("Is this correct?") {
+                return input;
+            }
+
+            println!("Ok, let's try again.\n");
+        }
+    }
+
+    fn ask_continent_confirmed() -> String {
+        let options: Vec<String> = Continents::vec().iter().map(|s| s.to_string()).collect();
+
+        loop {
+            let ans: Result<String, InquireError> =
+                Select::new("Choose your continent:", options.clone()).prompt();
 
             let continent: String = match ans {
                 Ok(choice) => choice,
@@ -82,33 +172,68 @@ fn signup(conn: &Connection) -> Result<User> {
         }
     }
 
+    fn ask_confirmed_password(field_pretty: &str, question: &str) -> String {
+        fn encrypt_password(password: &str) -> Option<String> {
+            let salt = SaltString::generate(&mut OsRng);
+            let argon2_instance = get_argon2_instance();
+            return argon2_instance
+                .hash_password(password.as_bytes(), &salt)
+                .ok()
+                .map(|hash| hash.to_string());
+        }
+
+        loop {
+            let validator = |input: &str| {
+                if input.chars().count() < 10 {
+                    Ok(Validation::Invalid(
+                        "Keys must have at least 10 characters.".into(),
+                    ))
+                } else {
+                    Ok(Validation::Valid)
+                }
+            };
+
+            let name = Password::new(question)
+                .with_display_toggle_enabled()
+                .with_display_mode(PasswordDisplayMode::Masked)
+                .with_custom_confirmation_message(&format!("{} (confirm):", field_pretty))
+                .with_custom_confirmation_error_message("The keys don't match.")
+                .with_validator(validator)
+                .with_help_message("It is recommended to generate a new one only for this purpose")
+                .prompt();
+
+            match name {
+                Ok(password) => return encrypt_password(&password).unwrap_or_default(),
+                Err(_) => println!("An error happened when asking for your key, try again later."),
+            }
+        }
+    }
+
     // --- main signup flow: keep asking until user confirms everything ---
 
     loop {
-        let name = ask_confirmed_text("Name", "What's your name?");
+        let username = ask_confirmed_text("Username", "What's your username?");
         let email = ask_confirmed_text("Email", "What's your email?");
+        let password = ask_confirmed_password("Password", "What's your password?");
         let tz_continent = ask_continent_confirmed();
-        let tz_city = ask_confirmed_text(
-            "Time zone city",
-            "What's your time zone city?",
-        );
+        let tz_city = ask_confirmed_city(&tz_continent);
 
         println!("\nSummary:");
-        println!("Name: {}", name);
+        println!("Username: {}", username);
         println!("Email: {}", email);
         println!("Time zone: {}/{}", tz_continent, tz_city);
 
         if yes("Confirm signup?") {
             // Insert
             conn.execute(
-                "INSERT INTO people (name, email, tz_continent, tz_city) VALUES (?1, ?2, ?3, ?4)",
-                (&name, &email, &tz_continent, &tz_city),
+                "INSERT INTO people (username, email, password, tz_continent, tz_city) VALUES (?1, ?2, ?3, ?4, ?5)",
+                (&username, &email, &password, &tz_continent, &tz_city),
             )?;
 
             // Build User (works if your User has pub fields; otherwise use User::new(...))
             let id = conn.last_insert_rowid() as i32;
 
-            let user = User::new(id, name, email, tz_continent, tz_city);
+            let user = User::new(id, username, email, password, tz_continent, tz_city);
 
             println!("\nSignup complete! Welcome, {}!", user.name());
             return Ok(user);
@@ -119,18 +244,26 @@ fn signup(conn: &Connection) -> Result<User> {
 }
 
 fn signin(conn: &Connection) -> Result<Option<User>> {
-    println!("What's your name?");
-    let mut name = String::new();
-    io::stdin()
-        .read_line(&mut name)
-        .expect("Failed to read input");
+    let identifier = Text::new("Username or Email:")
+        .with_placeholder("Type your username or email here")
+        .prompt()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
 
-    let name = name.trim().to_string();
+    let password_input = Password::new("Password:")
+        .with_display_toggle_enabled()
+        .with_display_mode(PasswordDisplayMode::Masked)
+        .without_confirmation()
+        .prompt()
+        .unwrap_or_default();
 
-    let user = conn
+    let user: Option<User> = conn
         .query_row(
-            "SELECT id, name, email, tz_continent, tz_city FROM people WHERE name = ?1",
-            [&name],
+            "SELECT id, username, email, password, tz_continent, tz_city
+             FROM people
+             WHERE username = ?1 OR email = ?1",
+            [&identifier],
             |row| {
                 Ok(User::new(
                     row.get(0)?,
@@ -138,19 +271,45 @@ fn signin(conn: &Connection) -> Result<Option<User>> {
                     row.get(2)?,
                     row.get(3)?,
                     row.get(4)?,
+                    row.get(5)?,
                 ))
             },
         )
-        .optional()?; // <-- turns "no rows" into Ok(None)
+        .optional()?;
 
-    Ok(user)
+    let generic_msg = "We couldn't verify your account with the provided credentials.";
+
+    let argon2 = get_argon2_instance();
+
+    // A *valid* dummy hash generated once using the same Argon2 params you use in production.
+    // (Generate it once with your app and paste it here.)
+    const DUMMY_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$2aYZPLsX/K0wjEZ1Hy6leg$ZxY80K0Lq3nS/PKsOciRJodOH9u8BRVdiAhjKFDUbCE";
+
+    let dummy_parsed =
+        PasswordHash::new(DUMMY_HASH).expect("DUMMY_HASH must be a valid PHC string");
+
+    let user_hash = user
+        .as_ref()
+        .and_then(|u| PasswordHash::new(u.password()).ok());
+
+    let parsed_hash: &PasswordHash = user_hash.as_ref().unwrap_or(&dummy_parsed);
+
+    let ok = argon2
+        .verify_password(password_input.as_bytes(), parsed_hash)
+        .is_ok();
+
+    if ok {
+        if let Some(u) = user {
+            return Ok(Some(u));
+        }
+    }
+
+    println!("{}", generic_msg);
+    Ok(None)
 }
 
 fn ask_yes_no(prompt: &str) -> bool {
-    let ans = Confirm::new(prompt)
-        .with_default(false)
-        .with_help_message("This is a help message")
-        .prompt();
+    let ans = Confirm::new(prompt).with_default(false).prompt();
 
     match ans {
         Ok(true) => true,

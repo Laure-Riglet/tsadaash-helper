@@ -3,6 +3,7 @@ pub struct User {
     id: i32,
     name: String,
     email: String,
+    password: String,
     tz_continent: String,
     tz_city: String,
 }
@@ -12,6 +13,7 @@ impl User {
         id: i32,
         name: String,
         email: String,
+        password: String,
         tz_continent: String,
         tz_city: String,
     ) -> Self {
@@ -19,6 +21,7 @@ impl User {
             id,
             name,
             email,
+            password,
             tz_continent,
             tz_city,
         }
@@ -33,6 +36,9 @@ impl User {
     }
     pub fn email(&self) -> &str {
         &self.email
+    }
+    pub fn password(&self) -> &str {
+        &self.password
     }
     pub fn tz_continent(&self) -> &str {
         &self.tz_continent
