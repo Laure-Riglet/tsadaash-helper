@@ -27,7 +27,7 @@ fn main() -> rusqlite::Result<()> {
         signup(&conn)?
     };
 
-    println!("Welcome, {}!", current_user.name());
+    println!("Welcome, {}!", current_user.username());
 
     if ask_yes_no("Do you wanna see datetime data?") {
         timezone_user(current_user).unwrap_or(());

@@ -15,7 +15,14 @@ pub fn connect() -> Result<Connection> {
                 tz_city TEXT NOT NULL, 
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
+            );
+
+            CREATE TRIGGER IF NOT EXISTS update_people_updated_at
+            AFTER UPDATE ON people
+            FOR EACH ROW
+            BEGIN
+                UPDATE people SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+            END;
             "#,
         [],
     )?;

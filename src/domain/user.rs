@@ -1,29 +1,35 @@
 #[derive(Debug, Clone)]
 pub struct User {
-    id: i32,
-    name: String,
-    email: String,
+    pub id: i32,
+    pub username: String,
+    pub email: String,
     password: String,
-    tz_continent: String,
-    tz_city: String,
+    pub tz_continent: String,
+    pub tz_city: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 impl User {
     pub fn new(
         id: i32,
-        name: String,
+        username: String,
         email: String,
         password: String,
         tz_continent: String,
         tz_city: String,
+        created_at: String,
+        updated_at: String,
     ) -> Self {
         Self {
             id,
-            name,
+            username,
             email,
             password,
             tz_continent,
             tz_city,
+            created_at,
+            updated_at,
         }
     }
 
@@ -31,8 +37,8 @@ impl User {
     pub fn id(&self) -> i32 {
         self.id
     }
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn username(&self) -> &str {
+        &self.username
     }
     pub fn email(&self) -> &str {
         &self.email
@@ -45,5 +51,11 @@ impl User {
     }
     pub fn tz_city(&self) -> &str {
         &self.tz_city
+    }
+    pub fn created_at(&self) -> &str {
+        &self.created_at
+    }
+    pub fn updated_at(&self) -> &str {
+        &self.updated_at
     }
 }

@@ -1,41 +1,17 @@
-use crate::domain::{Continents, User};
+use crate::domain::Continents;
+use crate::domain::User;
+use crate::db::repository::user;
+use crate::cli::security;
 
-use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2, Params,
-};
 use inquire::{
     autocompletion::Replacement, validator::Validation, Autocomplete, Confirm, CustomUserError,
     InquireError, Password, PasswordDisplayMode, Select, Text,
 };
 
 use serde_json::{from_str, Value};
-use rusqlite::{Connection, OptionalExtension, Result};
+use rusqlite::{Connection, Result};
 
-fn get_argon2_instance() -> Argon2<'static> {
-    //            Regarding Argon2 parameters:
-    //            ----------------------------
-    //            For API keys / tokens:
-    //            - higher m is OK (e.g., 96 MB --> 98304 KiB, 128 MB --> 131072 KiB)
-    //            - t can be lower
-    //            - UX doesn’t matter as much
-    //
-    //            For low-RAM environments:
-    //            - don’t go above ~32 MB (32768 KiB)
-    //            - keep t ≥ 2
-
-    let params = Params::new(
-        65536, // m: memory in KiB (64 MB)
-        3,     // t: iterations
-        1,     // p: parallelism
-        None,  // output length (None = default)
-    )
-    .expect("invalid Argon2 params");
-
-    return Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-}
-
-pub fn signup(conn: &Connection) -> Result<User> {
+pub fn signup(conn: &Connection) -> Result<User, rusqlite::Error> {
     // --- tiny helpers (MVP style: keep inside signup) ---
 
     fn yes(prompt: &str) -> bool {
@@ -161,15 +137,6 @@ pub fn signup(conn: &Connection) -> Result<User> {
     }
 
     fn ask_confirmed_password(field_pretty: &str, question: &str) -> String {
-        fn encrypt_password(password: &str) -> Option<String> {
-            let salt = SaltString::generate(&mut OsRng);
-            let argon2_instance = get_argon2_instance();
-            return argon2_instance
-                .hash_password(password.as_bytes(), &salt)
-                .ok()
-                .map(|hash| hash.to_string());
-        }
-
         loop {
             let validator = |input: &str| {
                 if input.chars().count() < 10 {
@@ -191,7 +158,13 @@ pub fn signup(conn: &Connection) -> Result<User> {
                 .prompt();
 
             match name {
-                Ok(password) => return encrypt_password(&password).unwrap_or_default(),
+                Ok(password) => match security::hash_password(&password) {
+                    Ok(hash) => return hash,
+                    Err(e) => {
+                        println!("Error hashing password: {}. Please try again.", e);
+                        continue;
+                    }
+                },
                 Err(_) => println!("An error happened when asking for your key, try again later."),
             }
         }
@@ -212,18 +185,8 @@ pub fn signup(conn: &Connection) -> Result<User> {
         println!("Time zone: {}/{}", tz_continent, tz_city);
 
         if yes("Confirm signup?") {
-            // Insert
-            conn.execute(
-                "INSERT INTO people (username, email, password, tz_continent, tz_city) VALUES (?1, ?2, ?3, ?4, ?5)",
-                (&username, &email, &password, &tz_continent, &tz_city),
-            )?;
-
-            // Build User (works if your User has pub fields; otherwise use User::new(...))
-            let id = conn.last_insert_rowid() as i32;
-
-            let user = User::new(id, username, email, password, tz_continent, tz_city);
-
-            println!("\nSignup complete! Welcome, {}!", user.name());
+            let user = user::insert(conn, &username, &email, &password, &tz_continent, &tz_city)?;
+            println!("\nSignup complete! Welcome, {}!", user.username());
             return Ok(user);
         }
 
@@ -246,45 +209,11 @@ pub fn signin(conn: &Connection) -> Result<Option<User>> {
         .prompt()
         .unwrap_or_default();
 
-    let user: Option<User> = conn
-        .query_row(
-            "SELECT id, username, email, password, tz_continent, tz_city
-             FROM people
-             WHERE username = ?1 OR email = ?1",
-            [&identifier],
-            |row| {
-                Ok(User::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
-            },
-        )
-        .optional()?;
+    let user: Option<User> = user::select_by_email_or_username(conn, &identifier)?;
 
     let generic_msg = "We couldn't verify your account with the provided credentials.";
 
-    let argon2 = get_argon2_instance();
-
-    // A *valid* dummy hash generated once using the same Argon2 params you use in production.
-    // (Generate it once with your app and paste it here.)
-    const DUMMY_HASH: &str = "$argon2id$v=19$m=65536,t=3,p=1$2aYZPLsX/K0wjEZ1Hy6leg$ZxY80K0Lq3nS/PKsOciRJodOH9u8BRVdiAhjKFDUbCE";
-
-    let dummy_parsed =
-        PasswordHash::new(DUMMY_HASH).expect("DUMMY_HASH must be a valid PHC string");
-
-    let user_hash = user
-        .as_ref()
-        .and_then(|u| PasswordHash::new(u.password()).ok());
-
-    let parsed_hash: &PasswordHash = user_hash.as_ref().unwrap_or(&dummy_parsed);
-
-    let ok = argon2
-        .verify_password(password_input.as_bytes(), parsed_hash)
-        .is_ok();
+    let (ok, user) = security::verify_password(user, &password_input);
 
     if ok {
         if let Some(u) = user {
