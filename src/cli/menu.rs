@@ -1,12 +1,13 @@
 use inquire::Select;
-use rusqlite::Connection;
+use rusqlite::{ Connection, Result };
 use crate::cli::{
         auth::{ signin, signup },
-        helpers::clear_screen
+        helpers::{ clear_screen, timezone_user }
     };
 use crate::domain::User;
+use crate::cli::task::menu;
 
-pub fn init_menu(conn: &Connection) -> rusqlite::Result<()> {
+pub fn init_menu(conn: &Connection) -> Result<()> {
 
     clear_screen();
     println!("");
@@ -16,7 +17,7 @@ pub fn init_menu(conn: &Connection) -> rusqlite::Result<()> {
 
     loop {
         let options = if let Some(_user) = &current_user {
-            vec!["Timezone", "Exit"]
+            vec!["Tasks", "Timezone", "Exit"]
         } else {
             vec!["Signup", "Signin", "Exit"]
         };
@@ -42,9 +43,16 @@ pub fn init_menu(conn: &Connection) -> rusqlite::Result<()> {
                 Ok(None) => println!("Signin aborted."),
                 Err(e) => println!("Signin failed: {}", e),
             },
+            "Tasks" => {
+                if let Some(user) = &current_user {
+                    menu(user.id() as u32).unwrap_or(());
+                } else {
+                    println!("No user signed in.");
+                }
+            },
             "Timezone" => {
                 if let Some(user) = &current_user {
-                    crate::cli::helpers::timezone_user(user.clone()).unwrap_or(());
+                    timezone_user(user.clone()).unwrap_or(());
                 } else {
                     println!("No user signed in.");
                 }
