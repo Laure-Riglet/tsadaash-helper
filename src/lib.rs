@@ -1,3 +1,5 @@
+pub mod api;
+
 pub mod cli;
 pub use cli::auth::{ signin, signup };
 pub use cli::helpers::{ ask_yes_no, clear_screen, timezone_user };
