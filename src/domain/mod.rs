@@ -1,6 +1,3 @@
-pub mod continents;
-pub use continents::Continents;
-
 pub mod timezone;
 pub use timezone::{Timezone, TimezoneError};
 
