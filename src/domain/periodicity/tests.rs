@@ -236,6 +236,7 @@ mod periodicity_tests {
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
             rep_per_unit: None, // Missing!
+            occurrence_settings: None,
             constraints: PeriodicityConstraints::default(),
             timeframe: None,
             special_pattern: None,
@@ -260,6 +261,7 @@ mod periodicity_tests {
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
             rep_per_unit: Some(0), // Zero is invalid!
+            occurrence_settings: None,
             constraints: PeriodicityConstraints::default(),
             timeframe: None,
             special_pattern: None,
@@ -289,6 +291,7 @@ mod periodicity_tests {
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
             rep_per_unit: Some(1),
+            occurrence_settings: None,
             constraints: PeriodicityConstraints {
                 day_constraint: Some(DayConstraint::SpecificDaysWeek(vec![
                     Weekday::Mon,
@@ -313,6 +316,7 @@ mod periodicity_tests {
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
             rep_per_unit: Some(1),
+            occurrence_settings: None,
             constraints: PeriodicityConstraints {
                 day_constraint: Some(DayConstraint::SpecificDaysMonthFromFirst(vec![31])),
                 ..Default::default()
@@ -334,6 +338,7 @@ mod periodicity_tests {
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
             rep_per_unit: Some(1),
+            occurrence_settings: None,
             constraints: PeriodicityConstraints {
                 day_constraint: Some(DayConstraint::EveryNDays(0)),
                 ..Default::default()
@@ -355,6 +360,7 @@ mod periodicity_tests {
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
             rep_per_unit: Some(1),
+            occurrence_settings: None,
             constraints: PeriodicityConstraints {
                 day_constraint: Some(DayConstraint::EveryNDays(367)),
                 ..Default::default()
@@ -390,6 +396,7 @@ mod periodicity_tests {
         let p = Periodicity {
             rep_unit: RepetitionUnit::None,
             rep_per_unit: None,
+            occurrence_settings: None,
             special_pattern: Some(SpecialPattern::Unique(UniqueDate { date })),
             constraints: PeriodicityConstraints {
                 day_constraint: Some(DayConstraint::EveryDay),

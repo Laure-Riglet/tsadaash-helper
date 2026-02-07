@@ -118,6 +118,9 @@ pub fn validate_periodicity(periodicity: &Periodicity) -> Result<(), ValidationE
     // 5. Validate timeframe if present
     validate_timeframe(&periodicity.timeframe)?;
     
+    // 6. Validate occurrence settings if present
+    validate_occurrence_settings(&periodicity.occurrence_settings, periodicity.rep_per_unit)?;
+    
     Ok(())
 }
 
@@ -666,6 +669,108 @@ fn validate_timeframe(
 }
 
 // ========================================================================
+// OCCURRENCE SETTINGS VALIDATION
+// ========================================================================
+
+pub fn validate_occurrence_settings(
+    settings: &Option<OccurrenceTimingSettings>,
+    rep_per_unit: Option<u8>,
+) -> Result<(), ValidationError> {
+    let Some(settings) = settings else {
+        return Ok(());
+    };
+    
+    // Validate duration (max 24 hours = 1440 minutes)
+    if let Some(duration) = settings.duration {
+        if duration == 0 {
+            return Err(ValidationError::InvalidValue {
+                field: "duration".into(),
+                value: "0".into(),
+                reason: "Duration must be at least 1 minute".into(),
+            });
+        }
+        if duration > 1440 {
+            return Err(ValidationError::OutOfRange {
+                field: "duration".into(),
+                value: duration.to_string(),
+                min: "1".into(),
+                max: "1440".into(),
+            });
+        }
+    }
+    
+    // Validate not_before < best_before if both present
+    if let (Some(not_before), Some(best_before)) = (settings.not_before, settings.best_before) {
+        if not_before >= best_before {
+            return Err(ValidationError::InvalidValue {
+                field: "not_before/best_before".into(),
+                value: format!("{}/{}", not_before, best_before),
+                reason: "not_before must be earlier than best_before".into(),
+            });
+        }
+    }
+    
+    // Validate rep_timing_settings if present
+    if let Some(rep_settings) = &settings.rep_timing_settings {
+        validate_rep_timing_settings(rep_settings, rep_per_unit)?;
+    }
+    
+    Ok(())
+}
+
+fn validate_rep_timing_settings(
+    rep_settings: &Vec<RepTimingSettings>,
+    rep_per_unit: Option<u8>,
+) -> Result<(), ValidationError> {
+    // Must not be empty
+    if rep_settings.is_empty() {
+        return Err(ValidationError::EmptyCollection {
+            field: "rep_timing_settings".into(),
+            reason: "If specified, must contain at least one RepTimingSettings".into(),
+        });
+    }
+    
+    // Check for duplicate rep_index values
+    let mut seen_indices = HashSet::new();
+    for rep in rep_settings {
+        if !seen_indices.insert(rep.rep_index) {
+            return Err(ValidationError::DuplicateValues {
+                field: "rep_timing_settings.rep_index".into(),
+                reason: format!("Duplicate rep_index: {}", rep.rep_index),
+            });
+        }
+    }
+    
+    // Validate each RepTimingSettings
+    for rep in rep_settings {
+        // Validate rep_index is within bounds if rep_per_unit is known
+        if let Some(count) = rep_per_unit {
+            if rep.rep_index >= count {
+                return Err(ValidationError::OutOfRange {
+                    field: "rep_timing_settings.rep_index".into(),
+                    value: rep.rep_index.to_string(),
+                    min: "0".into(),
+                    max: (count - 1).to_string(),
+                });
+            }
+        }
+        
+        // Validate not_before < best_before if both present
+        if let (Some(not_before), Some(best_before)) = (rep.not_before, rep.best_before) {
+            if not_before >= best_before {
+                return Err(ValidationError::InvalidValue {
+                    field: format!("rep_timing_settings[{}]", rep.rep_index),
+                    value: format!("not_before={}, best_before={}", not_before, best_before),
+                    reason: "not_before must be earlier than best_before".into(),
+                });
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+// ========================================================================
 // UNIT TESTS
 // ========================================================================
 
@@ -678,6 +783,7 @@ mod tests {
         let periodicity = Periodicity {
             rep_unit: RepetitionUnit::None,
             rep_per_unit: Some(1),
+            occurrence_settings: None,
             constraints: PeriodicityConstraints::default(),
             timeframe: None,
             special_pattern: Some(SpecialPattern::Unique(UniqueDate {
@@ -694,6 +800,7 @@ mod tests {
         let periodicity = Periodicity {
             rep_unit: RepetitionUnit::Day,
             rep_per_unit: None,
+            occurrence_settings: None,
             constraints: PeriodicityConstraints::default(),
             timeframe: None,
             special_pattern: None,
@@ -725,5 +832,253 @@ mod tests {
         let timeframe = Some((now, past));
         
         assert!(validate_timeframe(&timeframe).is_err());
+    }
+    
+    // ========================================================================
+    // OCCURRENCE SETTINGS TESTS
+    // ========================================================================
+    
+    #[test]
+    fn test_validate_occurrence_settings_none() {
+        // None is always valid
+        assert!(validate_occurrence_settings(&None, Some(3)).is_ok());
+    }
+    
+    #[test]
+    fn test_validate_occurrence_settings_valid() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
+            best_before: Some(NaiveTime::from_hms_opt(10, 0, 0).unwrap()),
+            rep_timing_settings: None,
+        };
+        
+        assert!(validate_occurrence_settings(&Some(settings), Some(3)).is_ok());
+    }
+    
+    #[test]
+    fn test_validate_occurrence_settings_zero_duration() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(0),
+            not_before: None,
+            best_before: None,
+            rep_timing_settings: None,
+        };
+        
+        let result = validate_occurrence_settings(&Some(settings), Some(3));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ValidationError::InvalidValue { field, value, .. } => {
+                assert_eq!(field, "duration");
+                assert_eq!(value, "0");
+            }
+            _ => panic!("Expected InvalidValue error"),
+        }
+    }
+    
+    #[test]
+    fn test_validate_occurrence_settings_duration_too_large() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(1441), // > 24 hours
+            not_before: None,
+            best_before: None,
+            rep_timing_settings: None,
+        };
+        
+        let result = validate_occurrence_settings(&Some(settings), Some(3));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ValidationError::OutOfRange { field, value, max, .. } => {
+                assert_eq!(field, "duration");
+                assert_eq!(value, "1441");
+                assert_eq!(max, "1440");
+            }
+            _ => panic!("Expected OutOfRange error"),
+        }
+    }
+    
+    #[test]
+    fn test_validate_occurrence_settings_not_before_after_best_before() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: Some(NaiveTime::from_hms_opt(10, 0, 0).unwrap()),
+            best_before: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()), // Earlier!
+            rep_timing_settings: None,
+        };
+        
+        let result = validate_occurrence_settings(&Some(settings), Some(3));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ValidationError::InvalidValue { field, reason, .. } => {
+                assert_eq!(field, "not_before/best_before");
+                assert!(reason.contains("not_before must be earlier"));
+            }
+            _ => panic!("Expected InvalidValue error"),
+        }
+    }
+    
+    #[test]
+    fn test_validate_occurrence_settings_not_before_equals_best_before() {
+        let time = NaiveTime::from_hms_opt(9, 0, 0).unwrap();
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: Some(time),
+            best_before: Some(time), // Same time
+            rep_timing_settings: None,
+        };
+        
+        let result = validate_occurrence_settings(&Some(settings), Some(3));
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_validate_rep_timing_settings_empty() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: None,
+            best_before: None,
+            rep_timing_settings: Some(vec![]), // Empty!
+        };
+        
+        let result = validate_occurrence_settings(&Some(settings), Some(3));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ValidationError::EmptyCollection { field, .. } => {
+                assert_eq!(field, "rep_timing_settings");
+            }
+            _ => panic!("Expected EmptyCollection error"),
+        }
+    }
+    
+    #[test]
+    fn test_validate_rep_timing_settings_duplicate_index() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: None,
+            best_before: None,
+            rep_timing_settings: Some(vec![
+                RepTimingSettings {
+                    rep_index: 0,
+                    not_before: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
+                    best_before: None,
+                },
+                RepTimingSettings {
+                    rep_index: 0, // Duplicate!
+                    not_before: Some(NaiveTime::from_hms_opt(12, 0, 0).unwrap()),
+                    best_before: None,
+                },
+            ]),
+        };
+        
+        let result = validate_occurrence_settings(&Some(settings), Some(3));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ValidationError::DuplicateValues { field, .. } => {
+                assert_eq!(field, "rep_timing_settings.rep_index");
+            }
+            _ => panic!("Expected DuplicateValues error"),
+        }
+    }
+    
+    #[test]
+    fn test_validate_rep_timing_settings_index_out_of_range() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: None,
+            best_before: None,
+            rep_timing_settings: Some(vec![
+                RepTimingSettings {
+                    rep_index: 3, // Out of range for rep_per_unit=3 (valid: 0, 1, 2)
+                    not_before: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
+                    best_before: None,
+                },
+            ]),
+        };
+        
+        let result = validate_occurrence_settings(&Some(settings), Some(3));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ValidationError::OutOfRange { field, value, max, .. } => {
+                assert_eq!(field, "rep_timing_settings.rep_index");
+                assert_eq!(value, "3");
+                assert_eq!(max, "2");
+            }
+            _ => panic!("Expected OutOfRange error"),
+        }
+    }
+    
+    #[test]
+    fn test_validate_rep_timing_settings_valid() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: None,
+            best_before: None,
+            rep_timing_settings: Some(vec![
+                RepTimingSettings {
+                    rep_index: 0,
+                    not_before: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
+                    best_before: Some(NaiveTime::from_hms_opt(10, 0, 0).unwrap()),
+                },
+                RepTimingSettings {
+                    rep_index: 1,
+                    not_before: Some(NaiveTime::from_hms_opt(12, 0, 0).unwrap()),
+                    best_before: Some(NaiveTime::from_hms_opt(14, 0, 0).unwrap()),
+                },
+                RepTimingSettings {
+                    rep_index: 2,
+                    not_before: Some(NaiveTime::from_hms_opt(18, 0, 0).unwrap()),
+                    best_before: Some(NaiveTime::from_hms_opt(20, 0, 0).unwrap()),
+                },
+            ]),
+        };
+        
+        assert!(validate_occurrence_settings(&Some(settings), Some(3)).is_ok());
+    }
+    
+    #[test]
+    fn test_validate_rep_timing_settings_time_order_invalid() {
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: None,
+            best_before: None,
+            rep_timing_settings: Some(vec![
+                RepTimingSettings {
+                    rep_index: 0,
+                    not_before: Some(NaiveTime::from_hms_opt(10, 0, 0).unwrap()),
+                    best_before: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()), // Invalid!
+                },
+            ]),
+        };
+        
+        let result = validate_occurrence_settings(&Some(settings), Some(3));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ValidationError::InvalidValue { field, reason, .. } => {
+                assert!(field.contains("rep_timing_settings"));
+                assert!(reason.contains("not_before must be earlier"));
+            }
+            _ => panic!("Expected InvalidValue error"),
+        }
+    }
+    
+    #[test]
+    fn test_validate_rep_timing_settings_no_rep_per_unit() {
+        // When rep_per_unit is None, we can't validate index bounds
+        // But other validations still apply
+        let settings = OccurrenceTimingSettings {
+            duration: Some(30),
+            not_before: None,
+            best_before: None,
+            rep_timing_settings: Some(vec![
+                RepTimingSettings {
+                    rep_index: 10, // Large index, but can't validate without rep_per_unit
+                    not_before: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
+                    best_before: Some(NaiveTime::from_hms_opt(10, 0, 0).unwrap()),
+                },
+            ]),
+        };
+        
+        // Should pass because we don't know the valid range
+        assert!(validate_occurrence_settings(&Some(settings), None).is_ok());
     }
 }

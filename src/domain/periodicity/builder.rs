@@ -26,6 +26,7 @@ use chrono::{DateTime, Utc, Weekday, Month, TimeZone};
 pub struct PeriodicityBuilder {
     rep_unit: Option<RepetitionUnit>,
     rep_per_unit: Option<u8>,
+    occurrence_settings: Option<OccurrenceTimingSettings>,
     day_constraint: Option<DayConstraint>,
     week_constraint: Option<WeekConstraint>,
     month_constraint: Option<MonthConstraint>,
@@ -47,6 +48,7 @@ impl PeriodicityBuilder {
         Self {
             rep_unit: None,
             rep_per_unit: None,
+            occurrence_settings: None,
             day_constraint: None,
             week_constraint: None,
             month_constraint: None,
@@ -271,6 +273,37 @@ impl PeriodicityBuilder {
     }
     
     // ────────────────────────────────────────────────────────
+    // OCCURRENCE TIMING SETTINGS
+    // ────────────────────────────────────────────────────────
+    
+    /// Sets occurrence timing settings (duration, time windows, per-rep settings)
+    /// 
+    /// # Example
+    /// ```
+    /// use tsadaash::domain::periodicity::{builder::PeriodicityBuilder, OccurrenceTimingSettings};
+    /// use chrono::NaiveTime;
+    /// 
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let settings = OccurrenceTimingSettings {
+    ///     duration: Some(30), // 30 minutes
+    ///     not_before: Some(NaiveTime::from_hms_opt(6, 0, 0).unwrap()),
+    ///     best_before: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
+    ///     rep_timing_settings: None,
+    /// };
+    /// 
+    /// let periodicity = PeriodicityBuilder::new()
+    ///     .daily(1)
+    ///     .with_occurrence_settings(settings)
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_occurrence_settings(mut self, settings: OccurrenceTimingSettings) -> Self {
+        self.occurrence_settings = Some(settings);
+        self
+    }
+    
+    // ────────────────────────────────────────────────────────
     // BUILD
     // ────────────────────────────────────────────────────────
     
@@ -279,6 +312,7 @@ impl PeriodicityBuilder {
         let periodicity = Periodicity {
             rep_unit: self.rep_unit.unwrap_or(RepetitionUnit::None),
             rep_per_unit: self.rep_per_unit,
+            occurrence_settings: self.occurrence_settings,
             constraints: PeriodicityConstraints {
                 day_constraint: self.day_constraint,
                 week_constraint: self.week_constraint,

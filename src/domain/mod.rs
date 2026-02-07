@@ -37,5 +37,8 @@ pub use task_occurrence::{
     TaskOccurrenceValidationError,
 };
 
+pub mod occurrence_rep;
+pub use occurrence_rep::OccurenceRep;
+
 pub mod user;
 pub use user::User;

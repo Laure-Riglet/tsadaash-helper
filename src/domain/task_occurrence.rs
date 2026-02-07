@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use crate::domain::occurrence_rep::OccurenceRep;
 
 // ========================================================================
 // VALIDATION ERRORS
@@ -45,91 +46,6 @@ pub enum OccurrenceStatus {
 }
 
 // ========================================================================
-// REPETITION OCCURRENCE - A single rep within a TaskOccurrence
-// ========================================================================
-
-/// RepOccurrence represents one repetition of a task within a time window
-/// 
-/// For a task "Exercise 3 times daily", each of the 3 reps is a RepOccurrence.
-/// Each rep can be completed independently and have its own notes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RepOccurrence {
-    /// Index of this repetition (0-based: 0 = first rep, 1 = second rep, etc.)
-    rep_index: u8,
-    
-    /// Whether this specific repetition is completed
-    completed: bool,
-    
-    /// When this repetition was completed
-    completed_at: Option<DateTime<Utc>>,
-    
-    /// Optional notes specific to this repetition
-    /// Example: "Did push-ups" vs "Did squats" for different reps
-    notes: Option<String>,
-}
-
-impl RepOccurrence {
-    pub const MAX_NOTES_LENGTH: usize = 500;
-
-    /// Creates a new incomplete repetition
-    pub fn new(rep_index: u8) -> Self {
-        Self {
-            rep_index,
-            completed: false,
-            completed_at: None,
-            notes: None,
-        }
-    }
-
-    // ── GETTERS ─────────────────────────────────────────────
-
-    pub fn rep_index(&self) -> u8 {
-        self.rep_index
-    }
-
-    pub fn is_completed(&self) -> bool {
-        self.completed
-    }
-
-    pub fn completed_at(&self) -> Option<DateTime<Utc>> {
-        self.completed_at
-    }
-
-    pub fn notes(&self) -> Option<&str> {
-        self.notes.as_deref()
-    }
-
-    // ── BEHAVIORS ───────────────────────────────────────────
-
-    pub fn mark_complete(&mut self) {
-        if !self.completed {
-            self.completed = true;
-            self.completed_at = Some(Utc::now());
-        }
-    }
-
-    pub fn mark_incomplete(&mut self) {
-        if self.completed {
-            self.completed = false;
-            self.completed_at = None;
-        }
-    }
-
-    pub fn set_notes(&mut self, notes: Option<String>) -> Result<(), TaskOccurrenceValidationError> {
-        if let Some(ref n) = notes {
-            if n.len() > Self::MAX_NOTES_LENGTH {
-                return Err(TaskOccurrenceValidationError::NotesTooLong {
-                    max: Self::MAX_NOTES_LENGTH,
-                    actual: n.len(),
-                });
-            }
-        }
-        self.notes = notes.map(|n| n.trim().to_string());
-        Ok(())
-    }
-}
-
-// ========================================================================
 // TASK OCCURRENCE - A specific instance of a task within a time window
 // ========================================================================
 
@@ -143,7 +59,7 @@ impl RepOccurrence {
 /// 
 /// # Multiple Repetitions:
 /// If Task.periodicity.rep_per_unit is 3, this TaskOccurrence will contain
-/// 3 RepOccurrences, each tracking its own completion status.
+/// 3 OccurenceReps, each tracking its own completion status.
 /// 
 /// # Domain Relationships
 /// - TaskOccurrence is an entity (identity: task_id + window_start)
@@ -170,7 +86,7 @@ pub struct TaskOccurrence {
     
     /// All repetitions for this occurrence
     /// Length = Task.periodicity.rep_per_unit
-    repetitions: Vec<RepOccurrence>,
+    repetitions: Vec<OccurenceRep>,
     
     // ── OCCURRENCE-LEVEL DATA ───────────────────────────────
     
@@ -201,7 +117,7 @@ impl TaskOccurrence {
         }
 
         let repetitions = (0..rep_count)
-            .map(RepOccurrence::new)
+            .map(OccurenceRep::new)
             .collect();
 
         Ok(Self {
@@ -222,7 +138,7 @@ impl TaskOccurrence {
         self.window_end
     }
 
-    pub fn repetitions(&self) -> &[RepOccurrence] {
+    pub fn repetitions(&self) -> &[OccurenceRep] {
         &self.repetitions
     }
 
@@ -369,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_rep_occurrence_creation() {
-        let rep = RepOccurrence::new(0);
+        let rep = OccurenceRep::new(0);
         assert_eq!(rep.rep_index(), 0);
         assert!(!rep.is_completed());
         assert!(rep.completed_at().is_none());
@@ -377,7 +293,7 @@ mod tests {
 
     #[test]
     fn test_rep_occurrence_completion() {
-        let mut rep = RepOccurrence::new(0);
+        let mut rep = OccurenceRep::new(0);
         
         assert!(!rep.is_completed());
         rep.mark_complete();
@@ -544,7 +460,7 @@ mod tests {
         assert!(matches!(result, Err(TaskOccurrenceValidationError::NotesTooLong { .. })));
         
         // Rep notes too long
-        let long_rep_notes = "b".repeat(RepOccurrence::MAX_NOTES_LENGTH + 1);
+        let long_rep_notes = "b".repeat(OccurenceRep::MAX_NOTES_LENGTH + 1);
         let result = occurrence.set_rep_notes(0, Some(long_rep_notes));
         assert!(matches!(result, Err(TaskOccurrenceValidationError::NotesTooLong { .. })));
     }
