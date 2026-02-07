@@ -5,14 +5,14 @@ use crate::domain::{Timezone, Location};
 pub struct User {
     pub username: String,
     pub email: String,
-    pub password: String,
+    pub password_hash: String,
 
     // ── TIMEZONE & LOCATION ──────────────────────────────────
     /// User's timezone (e.g., "America/New_York", "Europe/London")
     pub timezone: Timezone,
     
     /// User's physical location (optional)
-    pub location: Option<Location>,
+    pub location: Option<Vec<Location>>,  // Changed to Vec<Location> to allow multiple locations (e.g., home, work)
 
     // ── CALENDAR SETTINGS ────────────────────────────────────
     
@@ -39,13 +39,13 @@ impl User {
     pub fn new(
         username: String,
         email: String,
-        password: String,
+        password_hash: String,
         timezone: Timezone,
     ) -> Self {
         Self {
             username,
             email,
-            password,
+            password_hash,
             timezone,
             location: None,
             week_start: Weekday::Mon,
@@ -58,9 +58,9 @@ impl User {
     pub fn with_all_settings(
         username: String,
         email: String,
-        password: String,
+        password_hash: String,
         timezone: Timezone,
-        location: Option<Location>,
+        location: Option<Vec<Location>>,
         week_start: Weekday,
         year_start: Month,
         day_start: NaiveTime,
@@ -68,7 +68,7 @@ impl User {
         Self {
             username,
             email,
-            password,
+            password_hash,
             timezone,
             location,
             week_start,
@@ -85,7 +85,7 @@ impl User {
     }
     
     /// Sets or updates the user's location
-    pub fn set_location(&mut self, location: Option<Location>) {
+    pub fn set_location(&mut self, location: Option<Vec<Location>>) {
         self.location = location;
     }
     
@@ -111,7 +111,7 @@ impl User {
     /// let mut user = User::new(
     ///     "user".to_string(),
     ///     "user@example.com".to_string(),
-    ///     "password".to_string(),
+    ///     "password_hash".to_string(),
     ///     timezone,
     /// );
     /// 
