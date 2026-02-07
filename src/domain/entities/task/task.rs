@@ -1,5 +1,5 @@
-use crate::domain::Periodicity;
 use chrono::{DateTime, Utc, Weekday};
+use crate::domain::entities::task::periodicity::Periodicity;
 
 // ========================================================================
 // VALIDATION ERRORS
@@ -290,7 +290,7 @@ impl Task {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::Periodicity;
+    use crate::domain::entities::task::Periodicity;
 
     // ── Task Tests ──────────────────────────────────────────
 

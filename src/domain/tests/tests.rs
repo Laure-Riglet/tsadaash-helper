@@ -9,10 +9,10 @@
 
 #[cfg(test)]
 mod periodicity_tests {
-    use crate::domain::{
-        Periodicity, PeriodicityBuilder, DayConstraint, MonthConstraint,
-        NthWeekdayOfMonth, RepetitionUnit, ValidationError
-    };
+    use crate::domain::builders::periodicity_builder::PeriodicityBuilder;
+    use crate::domain::validators::periodicity_validator::ValidationError;
+    use crate::domain::entities::task::periodicity::{Periodicity, DayConstraint, MonthConstraint,
+        NthWeekdayOfMonth, RepetitionUnit};
     use chrono::{Utc, Weekday, Month, TimeZone};
 
     // ========================================================================
@@ -231,7 +231,7 @@ mod periodicity_tests {
         // When rep_unit is not None, rep_per_unit is required
         // We can't test this easily through the builder since it enforces this
         // But we can verify that validation catches it
-        use crate::domain::periodicity::{Periodicity, PeriodicityConstraints, RepetitionUnit};
+        use crate::domain::entities::task::periodicity::{Periodicity, PeriodicityConstraints, RepetitionUnit};
         
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
@@ -256,7 +256,7 @@ mod periodicity_tests {
     #[test]
     fn test_invalid_zero_rep_count() {
         // rep_per_unit cannot be zero
-        use crate::domain::periodicity::{Periodicity, PeriodicityConstraints, RepetitionUnit};
+        use crate::domain::entities::task::periodicity::{Periodicity, PeriodicityConstraints, RepetitionUnit};
         
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
@@ -286,7 +286,7 @@ mod periodicity_tests {
     #[test]
     fn test_invalid_duplicate_weekdays() {
         // Duplicate weekdays should be rejected
-        use crate::domain::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit};
+        use crate::domain::entities::task::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit};
         
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
@@ -311,7 +311,7 @@ mod periodicity_tests {
     #[test]
     fn test_invalid_month_day_out_of_range() {
         // Day value > 30 is invalid (0-indexed, so max is 30 = 31st day)
-        use crate::domain::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit};
+        use crate::domain::entities::task::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit};
         
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
@@ -333,7 +333,7 @@ mod periodicity_tests {
     #[test]
     fn test_invalid_every_n_days_zero() {
         // EveryNDays(0) is invalid
-        use crate::domain::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit};
+        use crate::domain::entities::task::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit};
         
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
@@ -355,7 +355,7 @@ mod periodicity_tests {
     #[test]
     fn test_invalid_every_n_days_too_large() {
         // EveryNDays > 366 is invalid
-        use crate::domain::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit};
+        use crate::domain::entities::task::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit};
         
         let p = Periodicity {
             rep_unit: RepetitionUnit::Day,
@@ -390,7 +390,7 @@ mod periodicity_tests {
     #[test]
     fn test_invalid_special_pattern_with_constraints() {
         // Special patterns cannot have regular constraints
-        use crate::domain::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit, SpecialPattern, UniqueDate};
+        use crate::domain::entities::task::periodicity::{Periodicity, PeriodicityConstraints, DayConstraint, RepetitionUnit, SpecialPattern, UniqueDate};
         
         let date = Utc::now();
         let p = Periodicity {

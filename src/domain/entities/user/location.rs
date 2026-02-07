@@ -14,7 +14,7 @@ use std::fmt;
 /// 
 /// # Examples
 /// ```
-/// use tsadaash::domain::{Location, GeoCoordinates};
+/// use tsadaash::domain::entities::user::{Location, GeoCoordinates};
 /// 
 /// let coords = GeoCoordinates::new(40.7128, -74.0060).unwrap();
 /// let location = Location::new(
@@ -136,7 +136,7 @@ impl fmt::Display for Location {
 /// 
 /// # Examples
 /// ```
-/// use tsadaash::domain::GeoCoordinates;
+/// use tsadaash::domain::entities::user::GeoCoordinates;
 /// 
 /// // Valid coordinates
 /// let nyc = GeoCoordinates::new(40.7128, -74.0060).unwrap();

@@ -1,10 +1,6 @@
 use chrono::{DateTime, NaiveTime, Datelike, Month, NaiveDate, Utc, Weekday};
-
-pub mod validation;
-pub mod builder;
-
-#[cfg(test)]
-mod tests;
+use crate::domain::validators::periodicity_validator::ValidationError;
+use crate::domain::validators::periodicity_validator::validate_periodicity;
 
 // ========================================================================
 // CORE REPETITION SETTINGS
@@ -42,12 +38,12 @@ pub enum MonthWeekPosition {
 
 impl MonthWeekPosition {
     /// Validates that the position is within acceptable bounds (0-4)
-    pub fn validate(&self) -> Result<(), validation::ValidationError> {
+    pub fn validate(&self) -> Result<(), ValidationError> {
         let value = match self {
             MonthWeekPosition::FromFirst(v) | MonthWeekPosition::FromLast(v) => *v,
         };
         if value > 4 {
-            return Err(validation::ValidationError::InvalidValue {
+            return Err(ValidationError::InvalidValue {
                 field: "MonthWeekPosition".into(),
                 value: value.to_string(),
                 reason: "Week position must be 0-4".into(),
@@ -177,9 +173,9 @@ pub struct CustomDates {
 }
 
 impl CustomDates {
-    pub fn new(mut dates: Vec<DateTime<Utc>>) -> Result<Self, validation::ValidationError> {
+    pub fn new(mut dates: Vec<DateTime<Utc>>) -> Result<Self, ValidationError> {
         if dates.is_empty() {
-            return Err(validation::ValidationError::InvalidValue {
+            return Err(ValidationError::InvalidValue {
                 field: "CustomDates".into(),
                 value: "empty".into(),
                 reason: "Must contain at least one date".into(),
@@ -227,7 +223,7 @@ pub struct PeriodicityConstraints {
 /// # Examples
 /// 
 /// ```rust
-/// use tsadaash::domain::periodicity::OccurrenceTimingSettings;
+/// use tsadaash::domain::entities::task::periodicity::OccurrenceTimingSettings;
 /// use chrono::NaiveTime;
 /// 
 /// // Simple: Morning workout, should take 30 minutes
@@ -266,7 +262,7 @@ pub struct OccurrenceTimingSettings {
 /// # Examples
 /// 
 /// ```rust
-/// use tsadaash::domain::periodicity::{OccurrenceTimingSettings, RepTimingSettings};
+/// use tsadaash::domain::entities::task::periodicity::{OccurrenceTimingSettings, RepTimingSettings};
 /// use chrono::NaiveTime;
 /// 
 /// // Medication 3x per day: breakfast, lunch, dinner
@@ -319,7 +315,7 @@ pub struct RepTimingSettings {
 /// 
 /// # Examples
 /// ```
-/// use tsadaash::domain::periodicity::*;
+/// use tsadaash::domain::entities::task::periodicity::*;
 /// use chrono::{Weekday, Month};
 /// 
 /// let periodicity = Periodicity {
@@ -397,8 +393,8 @@ pub enum SpecialPattern {
 impl Periodicity {
     /// Validates the entire periodicity configuration
     /// This is the main entry point for domain validation
-    pub fn validate(&self) -> Result<(), validation::ValidationError> {
-        validation::validate_periodicity(self)
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        validate_periodicity(self)
     }
     
     /// Gets the effective reference date for EveryN* constraint calculations
@@ -648,7 +644,7 @@ impl Periodicity {
     /// - Feb 9-15 (Mon-Sun): Week 1
     /// - Feb 16-22 (Mon-Sun): Week 2
     /// - Feb 23-Mar 1 (Mon-Sun): Week 3 (overflow attached to February)
-    fn week_of_month_from_first(date: &DateTime<Utc>, week_start: Weekday) -> u8 {
+    pub fn week_of_month_from_first(date: &DateTime<Utc>, week_start: Weekday) -> u8 {
         let year = date.year();
         let month = date.month();
         let day = date.day();

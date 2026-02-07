@@ -1,5 +1,5 @@
 use chrono::{Month, NaiveTime, Weekday};
-use crate::domain::{Timezone, Location};
+use crate::domain::entities::user::{Timezone, Location};
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -105,7 +105,7 @@ impl User {
     /// 
     /// # Example
     /// ```
-    /// # use tsadaash::domain::{User, Timezone};
+    /// # use tsadaash::domain::entities::user::{User, Timezone};
     /// # use chrono::NaiveTime;
     /// let timezone = Timezone::new("America/New_York".to_string()).unwrap();
     /// let mut user = User::new(

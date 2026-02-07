@@ -25,7 +25,7 @@ use std::ops::Deref;
 /// # Ergonomics
 /// Implements `Deref<Target=str>` and `AsRef<str>` for easy usage:
 /// ```
-/// use tsadaash::domain::Timezone;
+/// use tsadaash::domain::entities::user::Timezone;
 /// 
 /// let tz = Timezone::new("America/New_York".to_string()).unwrap();
 /// 
@@ -53,7 +53,7 @@ impl Timezone {
     /// 
     /// # Examples
     /// ```
-    /// use tsadaash::domain::Timezone;
+    /// use tsadaash::domain::entities::user::Timezone;
     /// 
     /// // Valid
     /// assert!(Timezone::new("Europe/Paris".to_string()).is_ok());

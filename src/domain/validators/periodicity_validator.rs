@@ -1,5 +1,6 @@
 use super::*;
 use std::collections::HashSet;
+use chrono::{DateTime, Utc};
 
 // ========================================================================
 // VALIDATION ERRORS
@@ -777,6 +778,8 @@ fn validate_rep_timing_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{NaiveTime, Utc, Weekday};
+    use crate::domain::entities::task::periodicity::UniqueDate;
     
     #[test]
     fn test_validate_repetition_none_requires_none_count() {

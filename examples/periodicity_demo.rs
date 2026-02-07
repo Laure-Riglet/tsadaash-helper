@@ -1,10 +1,10 @@
 /// Example usage demonstrations for the Periodicity system
 /// This file shows how to use the new constraint-based periodicity model
 
-use tsadaash::domain::{
-    Periodicity, PeriodicityBuilder, 
-    NthWeekdayOfMonth
+use tsadaash::domain::entities::task::periodicity::{
+    Periodicity, NthWeekdayOfMonth
 };
+use tsadaash::domain::builders::periodicity_builder::PeriodicityBuilder;
 use chrono::{Utc, Weekday, Month, TimeZone};
 
 fn main() {
@@ -75,7 +75,7 @@ fn main() {
     println!("   Jan 31 matches: {}", last_days.matches_constraints(&jan_31, Weekday::Mon));
     println!("   Jan 30 matches: {}", last_days.matches_constraints(&jan_30, Weekday::Mon));
     println!("   Feb 28 matches: {} (last day of Feb)\n", last_days.matches_constraints(&feb_28, Weekday::Mon));
-    
+
     // Example 6: Complex combination - 3 times per day on Mondays in Q1
     println!("6. Complex: 3x/day on Mondays in Q1:");
     let complex = PeriodicityBuilder::new()

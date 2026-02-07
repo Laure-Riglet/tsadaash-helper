@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use crate::domain::occurrence_rep::OccurenceRep;
+use crate::domain::entities::task::occurrence_rep::OccurenceRep;
 
 // ========================================================================
 // VALIDATION ERRORS
