@@ -403,10 +403,18 @@ impl Periodicity {
             }
             WeekConstraint::SpecificWeeksOfMonthFromFirst(weeks) => {
                 let week_of_month = Self::week_of_month_from_first(date, self.week_start);
+                // 255 means invalid (belongs to different month)
+                if week_of_month == 255 {
+                    return false;
+                }
                 weeks.contains(&week_of_month)
             }
             WeekConstraint::SpecificWeeksOfMonthFromLast(weeks) => {
                 let week_of_month = Self::week_of_month_from_last(date, self.week_start);
+                // 255 means invalid (belongs to different month)
+                if week_of_month == 255 {
+                    return false;
+                }
                 weeks.contains(&week_of_month)
             }
         }
@@ -467,15 +475,142 @@ impl Periodicity {
         occurrence == n as u32
     }
     
-    fn week_of_month_from_first(date: &DateTime<Utc>, _week_start: Weekday) -> u8 {
+    /// Calculate which week of the month (0-indexed) a date falls into,
+    /// counting from the first occurrence of week_start.
+    /// 
+    /// # Week Calculation Rules
+    /// - Week 0 starts on the first occurrence of week_start in the month
+    /// - Each subsequent week starts 7 days later
+    /// - Days before the first week_start belong to the previous month (return 255 as invalid)
+    /// - Weeks that overflow into next month still belong to this month
+    /// 
+    /// # Example
+    /// February 2026 with week_start = Monday:
+    /// - Feb 1 (Sun): invalid (belongs to January's last week)
+    /// - Feb 2-8 (Mon-Sun): Week 0
+    /// - Feb 9-15 (Mon-Sun): Week 1
+    /// - Feb 16-22 (Mon-Sun): Week 2
+    /// - Feb 23-Mar 1 (Mon-Sun): Week 3 (overflow attached to February)
+    fn week_of_month_from_first(date: &DateTime<Utc>, week_start: Weekday) -> u8 {
+        let year = date.year();
+        let month = date.month();
         let day = date.day();
-        ((day - 1) / 7) as u8
+        
+        // Get the first day of this month
+        let first_day = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+        let first_weekday = first_day.weekday();
+        
+        // Find the first occurrence of week_start in this month
+        let first_week_start_day = if first_weekday == week_start {
+            1
+        } else {
+            // Calculate days forward to reach week_start
+            let days_forward = (week_start.num_days_from_monday() + 7 
+                - first_weekday.num_days_from_monday()) % 7;
+            1 + days_forward as u32
+        };
+        
+        // If date is before first week_start, it belongs to previous month
+        if day < first_week_start_day {
+            return 255; // Invalid - belongs to previous month
+        }
+        
+        // Calculate which week (0-indexed) since first week_start
+        let days_since_first_week_start = day - first_week_start_day;
+        (days_since_first_week_start / 7) as u8
     }
     
-    fn week_of_month_from_last(date: &DateTime<Utc>, _week_start: Weekday) -> u8 {
+    /// Calculate which week of the month (0-indexed) a date falls into,
+    /// counting backwards from the last complete week ending in the month.
+    ///
+    /// # Week Calculation Rules
+    /// - Week 0 is the last complete week that ends in this month
+    /// - Week boundaries respect week_start (week ends on day before week_start)
+    /// - Days after the last complete week belong to next month (return 255 as invalid)
+    ///
+    /// # Example
+    /// February 2026 with week_start = Monday (ends on Sunday):
+    /// - Feb 1 (Sun): invalid (belongs to previous month's week)
+    /// - Feb 2-8 (Mon-Sun): Week 3
+    /// - Feb 9-15 (Mon-Sun): Week 2  
+    /// - Feb 16-22 (Mon-Sun): Week 1
+    /// - Feb 23-28 (Mon-Sat): Week 0 (last week, incomplete in Feb but completes in March)
+    fn week_of_month_from_last(date: &DateTime<Utc>, week_start: Weekday) -> u8 {
+        let year = date.year();
+        let month = date.month();
+        let day = date.day();
+        
         let naive_date = date.naive_utc().date();
         let last_day = Self::last_day_of_month(naive_date);
-        let days_from_end = last_day - date.day();
-        (days_from_end / 7) as u8
+        let last_date = NaiveDate::from_ymd_opt(year, month, last_day).unwrap();
+        let last_weekday = last_date.weekday();
+        
+        // Find the last day that is just before week_start (end of week)
+        // If week_start is Monday, week ends on Sunday
+        let week_end = if week_start == Weekday::Mon {
+            Weekday::Sun
+        } else {
+            // Get previous day
+            match week_start {
+                Weekday::Tue => Weekday::Mon,
+                Weekday::Wed => Weekday::Tue,
+                Weekday::Thu => Weekday::Wed,
+                Weekday::Fri => Weekday::Thu,
+                Weekday::Sat => Weekday::Fri,
+                Weekday::Sun => Weekday::Sat,
+                Weekday::Mon => Weekday::Sun,
+            }
+        };
+        
+        // Find the last occurrence of week_end in this month
+        let last_week_end_day = if last_weekday == week_end {
+            last_day
+        } else {
+            // Calculate days backward to reach week_end
+            let days_back = (last_weekday.num_days_from_monday() + 7 
+                - week_end.num_days_from_monday()) % 7;
+            if days_back == 0 {
+                // week_end is after last_weekday, so go back a full week
+                last_day.saturating_sub(7)
+            } else {
+                last_day - days_back as u32
+            }
+        };
+        
+        // If date is after last complete week, belongs to next month
+        if day > last_week_end_day {
+            return 255; // Invalid - belongs to next month
+        }
+        
+        // Calculate which week (0-indexed from end) 
+        let days_before_last_week_end = last_week_end_day - day;
+        (days_before_last_week_end / 7) as u8
+    }
+    
+    /// Get the total number of complete weeks in a month based on week_start
+    /// This is useful for validation and understanding month structure
+    pub fn weeks_in_month(year: i32, month: u32, week_start: Weekday) -> u8 {
+        let first_day = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+        let first_weekday = first_day.weekday();
+        
+        // Find first week_start
+        let first_week_start_day = if first_weekday == week_start {
+            1
+        } else {
+            let days_forward = (week_start.num_days_from_monday() + 7 
+                - first_weekday.num_days_from_monday()) % 7;
+            1 + days_forward as u32
+        };
+        
+        // Get last day of month
+        let last_day = Self::last_day_of_month(first_day);
+        
+        // Calculate how many complete weeks fit
+        if last_day < first_week_start_day {
+            return 0;
+        }
+        
+        let days_from_first_week_start = last_day - first_week_start_day;
+        ((days_from_first_week_start / 7) + 1) as u8
     }
 }

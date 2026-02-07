@@ -527,4 +527,109 @@ mod periodicity_tests {
         
         assert!(result.is_ok());
     }
+    
+    // ========================================================================
+    // WEEK-OF-MONTH CALCULATION TESTS
+    // ========================================================================
+
+    #[test]
+    fn test_week_of_month_february_2026_monday_start() {
+        // February 2026: starts Sunday Feb 1, ends Saturday Feb 28
+        // With Monday week_start, weeks should be:
+        // - Feb 1 (Sun): belongs to January (invalid = 255)
+        // - Feb 2-8 (Mon-Sun): Week 0    // - Feb 9-15 (Mon-Sun): Week 1
+        // - Feb 16-22 (Mon-Sun): Week 2
+        // - Feb 23-Mar 1 (Mon-Sun): Week 3 (overflow to next month)
+        
+        // Feb 1 (Sunday) - should be invalid (belongs to previous month)
+        let feb_1 = Utc.with_ymd_and_hms(2026, 2, 1, 12, 0, 0).unwrap();
+        let week = Periodicity::week_of_month_from_first(&feb_1, Weekday::Mon);
+        assert_eq!(week, 255, "Feb 1 (Sun) should be invalid (255)");
+        
+        // Feb 2 (Monday) - Week 0
+        let feb_2 = Utc.with_ymd_and_hms(2026, 2, 2, 12, 0, 0).unwrap();
+        assert_eq!(Periodicity::week_of_month_from_first(&feb_2, Weekday::Mon), 0);
+        
+        // Feb 8 (Sunday) - Still Week 0
+        let feb_8 = Utc.with_ymd_and_hms(2026, 2, 8, 12, 0, 0).unwrap();
+        assert_eq!(Periodicity::week_of_month_from_first(&feb_8, Weekday::Mon), 0);
+        
+        // Feb 9 (Monday) - Week 1
+        let feb_9 = Utc.with_ymd_and_hms(2026, 2, 9, 12, 0, 0).unwrap();
+        assert_eq!(Periodicity::week_of_month_from_first(&feb_9, Weekday::Mon), 1);
+        
+        // Feb 15 (Sunday) - Still Week 1
+        let feb_15 = Utc.with_ymd_and_hms(2026, 2, 15, 12, 0, 0).unwrap();
+        assert_eq!(Periodicity::week_of_month_from_first(&feb_15, Weekday::Mon), 1);
+        
+        // Feb 16 (Monday) - Week 2
+        let feb_16 = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        assert_eq!(Periodicity::week_of_month_from_first(&feb_16, Weekday::Mon), 2);
+        
+        // Feb 22 (Sunday) - Still Week 2
+        let feb_22 = Utc.with_ymd_and_hms(2026, 2, 22, 12, 0, 0).unwrap();
+        assert_eq!(Periodicity::week_of_month_from_first(&feb_22, Weekday::Mon), 2);
+        
+        // Feb 23 (Monday) - Week 3
+        let feb_23 = Utc.with_ymd_and_hms(2026, 2, 23, 12, 0, 0).unwrap();
+        assert_eq!(Periodicity::week_of_month_from_first(&feb_23, Weekday::Mon), 3);
+        
+        // Feb 28 (Saturday) - Still Week 3
+        let feb_28 = Utc.with_ymd_and_hms(2026, 2, 28, 12, 0, 0).unwrap();
+        assert_eq!(Periodicity::week_of_month_from_first(&feb_28, Weekday::Mon), 3);
+        
+        // Verify February 2026 has 4 complete weeks with Monday start
+        let weeks_count = Periodicity::weeks_in_month(2026, 2, Weekday::Mon);
+        assert_eq!(weeks_count, 4, "February 2026 should have 4 weeks with Monday start");
+    }
+
+    #[test]
+    fn test_week_constraint_first_two_weeks() {
+        // Create periodicity: first 2 weeks of month (weeks 0 and 1 internally, but 1 and 2 for humans)
+        let periodicity = PeriodicityBuilder::new()
+            .daily(1)
+            .on_weeks_of_month(vec![1, 2]) // 1-indexed: week 1 and week 2
+            .week_starts_on(Weekday::Mon)
+            .build()
+            .unwrap();
+        
+        // February 2026 tests
+        let feb_1 = Utc.with_ymd_and_hms(2026, 2, 1, 12, 0, 0).unwrap();
+        assert!(!periodicity.matches_constraints(&feb_1), "Feb 1 (Sun, pre-week-0) should not match");
+        
+        let feb_2 = Utc.with_ymd_and_hms(2026, 2, 2, 12, 0, 0).unwrap();
+        assert!(periodicity.matches_constraints(&feb_2), "Feb 2 (Mon, week 0) should match");
+        
+        let feb_8 = Utc.with_ymd_and_hms(2026, 2, 8, 12, 0, 0).unwrap();
+        assert!(periodicity.matches_constraints(&feb_8), "Feb 8 (Sun, week 0) should match");
+        
+        let feb_9 = Utc.with_ymd_and_hms(2026, 2, 9, 12, 0, 0).unwrap();
+        assert!(periodicity.matches_constraints(&feb_9), "Feb 9 (Mon, week 1) should match");
+        
+        let feb_15 = Utc.with_ymd_and_hms(2026, 2, 15, 12, 0, 0).unwrap();
+        assert!(periodicity.matches_constraints(&feb_15), "Feb 15 (Sun, week 1) should match");
+        
+        let feb_16 = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        assert!(!periodicity.matches_constraints(&feb_16), "Feb 16 (Mon, week 2) should NOT match");
+        
+        let feb_23 = Utc.with_ymd_and_hms(2026, 2, 23, 12, 0, 0).unwrap();
+        assert!(!periodicity.matches_constraints(&feb_23), "Feb 23 (Mon, week 3) should NOT match");
+    }
+
+    #[test]
+    fn test_weeks_in_different_months() {
+        // January 2026: starts Thursday, ends Saturday (31 days)
+        // With Monday start: Mon Jan 5 starts week 0
+        let jan_weeks = Periodicity::weeks_in_month(2026, 1, Weekday::Mon);
+        assert!(jan_weeks >= 4 && jan_weeks <= 5, "January 2026 should have 4-5 weeks, got {}", jan_weeks);
+        
+        // March 2026: starts Sunday, ends Tuesday (31 days)  
+        // With Monday start: Mon Mar 2 starts week 0
+        let mar_weeks = Periodicity::weeks_in_month(2026, 3, Weekday::Mon);
+        assert!(mar_weeks >= 4 && mar_weeks <= 5, "March 2026 should have 4-5 weeks, got {}", mar_weeks);
+        
+        // February 2026: 28 days, starts Sunday
+        let feb_weeks = Periodicity::weeks_in_month(2026, 2, Weekday::Mon);
+        assert_eq!(feb_weeks, 4, "February 2026 should have exactly 4 weeks");
+    }
 }
