@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Deref;
 
 // ========================================================================
 // TIMEZONE VALUE OBJECT
@@ -7,26 +8,40 @@ use std::fmt;
 
 /// Represents a timezone identifier (e.g., "America/New_York", "Europe/Paris")
 /// 
+/// This is a **newtype** wrapper around `String` that enforces timezone format validation.
+/// The struct ensures that only valid IANA-formatted timezone identifiers can exist in the domain.
+/// 
 /// # Domain Rules (Format Only)
 /// - Must be in "Area/Location" format (e.g., "America/New_York")
 /// - Can have sub-zones (e.g., "America/Argentina/Buenos_Aires")
 /// - Characters must be alphanumeric, underscore, slash, hyphen, or plus
 /// 
-/// # Application Layer Responsibility
-/// The application layer should validate that the timezone actually exists
-/// using the tz_cities.json data or chrono-tz crate (infrastructure concern)
+/// # Why Not Just String?
+/// Using a newtype provides:
+/// - **Type Safety**: Can't accidentally use unvalidated strings
+/// - **Validation Enforcement**: Impossible to create invalid timezone
+/// - **Domain Clarity**: `Timezone` is more expressive than `String`
 /// 
-/// # Examples
+/// # Ergonomics
+/// Implements `Deref<Target=str>` and `AsRef<str>` for easy usage:
 /// ```
 /// use tsadaash::domain::Timezone;
 /// 
 /// let tz = Timezone::new("America/New_York".to_string()).unwrap();
-/// assert_eq!(tz.as_str(), "America/New_York");
+/// 
+/// // Can use like a string in many contexts
+/// assert_eq!(&*tz, "America/New_York");
+/// assert_eq!(tz.as_ref(), "America/New_York");
+/// 
+/// // Direct string methods via Deref
+/// assert!(tz.starts_with("America"));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Timezone {
-    identifier: String,
-}
+/// 
+/// # Application Layer Responsibility
+/// The application layer should validate that the timezone actually exists
+/// using the tz_cities.json data or chrono-tz crate (infrastructure concern)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Timezone(String);
 
 impl Timezone {
     /// Creates a new timezone with domain validation (format only)
@@ -80,25 +95,64 @@ impl Timezone {
             return Err(TimezoneError::InvalidFormat(identifier.clone()));
         }
         
-        Ok(Self {
-            identifier: trimmed.to_string(),
-        })
+        Ok(Self(trimmed.to_string()))
     }
     
     /// Returns the timezone identifier as a string slice
+    /// 
+    /// Note: You can also use `&*tz` or `tz.as_ref()` due to `Deref` implementation
     pub fn as_str(&self) -> &str {
-        &self.identifier
+        &self.0
     }
     
-    /// Converts into the owned String
+    /// Consumes the timezone and returns the inner string
     pub fn into_string(self) -> String {
-        self.identifier
+        self.0
+    }
+}
+
+// ========================================================================
+// TRAIT IMPLEMENTATIONS FOR ERGONOMICS
+// ========================================================================
+
+/// Allows using Timezone like a &str in many contexts
+impl Deref for Timezone {
+    type Target = str;
+    
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Allows passing Timezone where &str is expected
+impl AsRef<str> for Timezone {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Allows comparing Timezone with &str directly
+impl PartialEq<str> for Timezone {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for Timezone {
+    fn eq(&self, other: &&str) -> bool {
+        &self.0 == other
+    }
+}
+
+impl PartialEq<String> for Timezone {
+    fn eq(&self, other: &String) -> bool {
+        &self.0 == other
     }
 }
 
 impl fmt::Display for Timezone {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.identifier)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -261,5 +315,88 @@ mod tests {
         // Domain doesn't care if these are real - just that format is valid
         assert!(Timezone::new("FakeContinent/FakeCity".to_string()).is_ok());
         assert!(Timezone::new("Mars/Olympus_Mons".to_string()).is_ok());
+    }
+    
+    // ========================================================================
+    // ERGONOMICS TESTS (Deref, AsRef, PartialEq)
+    // ========================================================================
+    
+    #[test]
+    fn test_deref_to_str() {
+        let tz = Timezone::new("America/New_York".to_string()).unwrap();
+        
+        // Can use &* to get &str
+        let s: &str = &*tz;
+        assert_eq!(s, "America/New_York");
+        
+        // Can call str methods directly
+        assert!(tz.starts_with("America"));
+        assert!(tz.ends_with("York"));
+        assert_eq!(tz.len(), 16);
+    }
+    
+    #[test]
+    fn test_as_ref_str() {
+        let tz = Timezone::new("Europe/Paris".to_string()).unwrap();
+        
+        // Can pass to functions expecting AsRef<str>
+        fn takes_str_ref(s: impl AsRef<str>) {
+            assert_eq!(s.as_ref(), "Europe/Paris");
+        }
+        takes_str_ref(&tz);
+        takes_str_ref(tz);
+    }
+    
+    #[test]
+    fn test_partial_eq_with_str() {
+        let tz = Timezone::new("Asia/Tokyo".to_string()).unwrap();
+        
+        // Can compare directly with &str and String
+        assert_eq!(tz, "Asia/Tokyo");
+        assert_eq!(tz, "Asia/Tokyo".to_string());
+        assert_ne!(tz, "Asia/Seoul");
+        
+        // Works both ways
+        assert!("Asia/Tokyo" == &*tz);
+    }
+    
+    #[test]
+    fn test_display_trait() {
+        let tz = Timezone::new("Australia/Sydney".to_string()).unwrap();
+        assert_eq!(format!("{}", tz), "Australia/Sydney");
+        assert_eq!(tz.to_string(), "Australia/Sydney");
+    }
+    
+    #[test]
+    fn test_hash_trait() {
+        use std::collections::HashSet;
+        
+        let tz1 = Timezone::new("America/New_York".to_string()).unwrap();
+        let tz2 = Timezone::new("America/New_York".to_string()).unwrap();
+        let tz3 = Timezone::new("Europe/Paris".to_string()).unwrap();
+        
+        let mut set = HashSet::new();
+        set.insert(tz1);
+        set.insert(tz2); // Duplicate, won't be added
+        set.insert(tz3);
+        
+        assert_eq!(set.len(), 2);
+    }
+    
+    #[test]
+    fn test_usage_in_user_struct() {
+        // Demonstrates real-world usage
+        let tz = Timezone::new("America/Chicago".to_string()).unwrap();
+        
+        // Can compare with string literals
+        if tz == "America/Chicago" {
+            // Do something
+        }
+        
+        // Can use string methods
+        assert!(tz.contains("Chicago"));
+        
+        // Can pass to logging/formatting
+        println!("User timezone: {}", tz);
     }
 }
