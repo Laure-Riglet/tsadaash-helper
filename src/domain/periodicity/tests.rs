@@ -13,7 +13,7 @@ mod periodicity_tests {
         Periodicity, PeriodicityBuilder, DayConstraint, MonthConstraint,
         NthWeekdayOfMonth, RepetitionUnit, ValidationError
     };
-    use chrono::{Utc, Weekday, Month, TimeZone};
+    use chrono::{NaiveTime, Utc, Weekday, Month, TimeZone};
 
     // ========================================================================
     // BASIC VALID CONFIGURATIONS
@@ -241,6 +241,7 @@ mod periodicity_tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: None,
             reference_date: None,
         };
@@ -268,6 +269,7 @@ mod periodicity_tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: None,
             reference_date: None,
         };
@@ -306,6 +308,7 @@ mod periodicity_tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: None,
             reference_date: None,
         };
@@ -330,6 +333,7 @@ mod periodicity_tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: None,
             reference_date: None,
         };
@@ -354,6 +358,7 @@ mod periodicity_tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: None,
             reference_date: None,
         };
@@ -378,6 +383,7 @@ mod periodicity_tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: None,
             reference_date: None,
         };
@@ -417,6 +423,7 @@ mod periodicity_tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             reference_date: None,
         };
         

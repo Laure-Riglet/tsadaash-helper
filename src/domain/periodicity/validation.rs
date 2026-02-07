@@ -682,6 +682,7 @@ mod tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: Some(SpecialPattern::Unique(UniqueDate {
                 date: Utc::now(),
             })),
@@ -700,6 +701,7 @@ mod tests {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: None,
             reference_date: None,
         };

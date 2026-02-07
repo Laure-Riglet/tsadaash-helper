@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Month, NaiveDate, Utc, Weekday};
+use chrono::{DateTime, Datelike, Month, NaiveDate, NaiveTime, Utc, Weekday};
 
 pub mod validation;
 pub mod builder;
@@ -227,7 +227,7 @@ pub struct PeriodicityConstraints {
 /// # Examples
 /// ```
 /// use tsadaash::domain::periodicity::*;
-/// use chrono::{Weekday, Month};
+/// use chrono::{Weekday, Month, NaiveTime};
 /// 
 /// let periodicity = Periodicity {
 ///     rep_unit: RepetitionUnit::Day,
@@ -240,6 +240,7 @@ pub struct PeriodicityConstraints {
 ///     timeframe: None,
 ///     week_start: Weekday::Mon,
 ///     year_start: Month::January,
+///     day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
 ///     special_pattern: None,
 ///     reference_date: None,
 /// };
@@ -279,6 +280,15 @@ pub struct Periodicity {
     /// First month of the year (for year-based calculations)
     /// Default: January (for fiscal years, could be different)
     pub year_start: Month,
+    
+    /// Time of day when a new day begins (for daily task boundaries)
+    /// Default: 00:00:00 (midnight)
+    /// 
+    /// # Use Case
+    /// If set to 05:00:00, then "February 7th" runs from Feb 7 05:00:00 to Feb 8 04:59:59.
+    /// Useful for users who consider their "day" to start at a different time
+    /// (e.g., night shift workers, or "today ends when I go to sleep at 5 AM").
+    pub day_start: NaiveTime,
     
     // ── SPECIAL PATTERNS ─────────────────────────────────────
     

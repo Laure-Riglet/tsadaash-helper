@@ -1,5 +1,5 @@
 use super::*;
-use chrono::{DateTime, Utc, Weekday, Month, TimeZone};
+use chrono::{DateTime, NaiveTime, Utc, Weekday, Month, TimeZone};
 
 // ========================================================================
 // PERIODICITY BUILDER
@@ -33,6 +33,7 @@ pub struct PeriodicityBuilder {
     timeframe: Option<(DateTime<Utc>, DateTime<Utc>)>,
     week_start: Weekday,
     year_start: Month,
+    day_start: NaiveTime,
     special_pattern: Option<SpecialPattern>,
     reference_date: Option<DateTime<Utc>>,
 }
@@ -56,6 +57,7 @@ impl PeriodicityBuilder {
             timeframe: None,
             week_start: Weekday::Mon,
             year_start: Month::January,
+            day_start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             special_pattern: None,
             reference_date: None,
         }
@@ -273,6 +275,30 @@ impl PeriodicityBuilder {
         self
     }
     
+    /// Sets the time of day when a new day begins (default: midnight 00:00:00)
+    /// 
+    /// # Use Case
+    /// If set to 05:00:00, then "February 7th" runs from Feb 7 05:00:00 to Feb 8 04:59:59.
+    /// Useful for users who consider their "day" to start at a different time.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use tsadaash::domain::periodicity::builder::PeriodicityBuilder;
+    /// # use chrono::NaiveTime;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// // Day starts at 5 AM
+    /// let periodicity = PeriodicityBuilder::new()
+    ///     .daily(1)
+    ///     .day_starts_at(NaiveTime::from_hms_opt(5, 0, 0).unwrap())
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn day_starts_at(mut self, time: NaiveTime) -> Self {
+        self.day_start = time;
+        self
+    }
+    
     /// Sets the reference date for EveryN* rolling patterns
     /// This is the anchor point from which intervals are counted.
     /// 
@@ -304,6 +330,7 @@ impl PeriodicityBuilder {
             timeframe: self.timeframe,
             week_start: self.week_start,
             year_start: self.year_start,
+            day_start: self.day_start,
             special_pattern: self.special_pattern,
             reference_date: self.reference_date,
         };
