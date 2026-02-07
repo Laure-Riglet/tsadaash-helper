@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use crate::domain::entities::task::task_occurrence::TaskOccurrenceValidationError;
+use super::*;
 
 // ========================================================================
 // REPETITION OCCURRENCE - A single rep within a TaskOccurrence

@@ -1,5 +1,5 @@
 use chrono::{Month, NaiveTime, Weekday};
-use crate::domain::entities::user::{Timezone, Location};
+use super::*;
 
 #[derive(Debug, Clone)]
 pub struct User {
